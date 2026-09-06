@@ -840,104 +840,351 @@ function currentAdminCentre() {
   return CENTRES;
 }
 
-function renderAdmin() {
+async function renderAdmin() {
   const admin = getAdmin();
-  const welcome = document.getElementById("adminWelcomeName");
-  if (welcome && admin) welcome.textContent = `${t("welcomeAdmin")}, ${admin.displayName || admin.username}`;
 
-  const centres = currentAdminCentre();
-  const names = new Set(centres.map((c) => c.name));
-  const bookings = getBookings().filter((b) => names.has(b.centre) || centres.length === CENTRES.length);
-  const scoped = centres.length === CENTRES.length ? getBookings() : getBookings().filter((b) => names.has(b.centre));
+  const welcome = document.getElementById("adminWelcomeName");
+  if (welcome && admin) {
+    welcome.textContent =
+      `${t("welcomeAdmin")}, ${admin.displayName || admin.username}`;
+  }
 
   const info = document.getElementById("adminCentreInfo");
-  if (info) {
-    info.innerHTML = centres.slice(0, 6).map((c) =>
-      `<div class="badge">${escapeHTML(c.name)} · ${c.pin}</div>`
-    ).join(" ");
+
+  try {
+    const res = await fetch(`${CFG.API_BASE}/api/admin/bookings`);
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || "Could not load bookings.");
+    }
+
+    // PostgreSQL is the source of truth
+    const allBookings = (data.bookings || []).map((b) => ({
+      ...b,
+
+      // Normalize backend names to frontend names
+      name: b.farmer_name || "Farmer",
+      centre: b.centre_name,
+      pin: b.centre_pincode,
+      date: b.booking_date,
+      qty: b.quantity,
+      createdAt: b.created_at,
+
+      // These may not exist in current DB
+      idType: b.id_type || "",
+      idName: b.id_name || "",
+      idPreview: b.id_preview || ""
+    }));
+
+    const centres = currentAdminCentre();
+    const names = new Set(centres.map((c) => c.name));
+
+    const scoped =
+      centres.length === CENTRES.length
+        ? allBookings
+        : allBookings.filter((b) => names.has(b.centre));
+
+    if (info) {
+      info.innerHTML = centres
+        .slice(0, 6)
+        .map(
+          (c) =>
+            `<div class="badge">${escapeHTML(c.name)} · ${escapeHTML(c.pin)}</div>`
+        )
+        .join(" ");
+    }
+
+    const waiting = scoped.filter((b) => b.status === "booked");
+
+    const accepted = scoped.filter(
+      (b) => b.status === "accepted" || b.status === "procured"
+    );
+
+    const paid = scoped.filter((b) => b.status === "paid");
+
+    const qty = scoped.reduce(
+      (sum, b) => sum + Number(b.qty || 0),
+      0
+    );
+
+    // Stats
+    const stats = document.getElementById("adminStats");
+
+    if (stats) {
+      stats.innerHTML = `
+        <div class="stat-card">
+          <b>${CENTRES.length}</b>${t("allIndia")}
+        </div>
+
+        <div class="stat-card">
+          <b>${scoped.length}</b>${t("allBookings")}
+        </div>
+
+        <div class="stat-card">
+          <b>${waiting.length}</b>${t("waiting")}
+        </div>
+
+        <div class="stat-card">
+          <b>${qty}</b> Qtl
+        </div>
+
+        <div class="stat-card">
+          <b>${paid.length}</b>${t("paid")}
+        </div>
+
+        <div class="stat-card">
+          <b>${accepted.length}</b>${t("accepted")}
+        </div>
+      `;
+    }
+
+    // Centre-wise collection
+    const collections =
+      document.getElementById("adminCollections");
+
+    if (collections) {
+      const byCentre = {};
+
+      scoped.forEach((b) => {
+        byCentre[b.centre] =
+          byCentre[b.centre] || { qty: 0, n: 0 };
+
+        byCentre[b.centre].qty += Number(b.qty || 0);
+        byCentre[b.centre].n += 1;
+      });
+
+      const rows = Object.entries(byCentre);
+
+      collections.innerHTML = rows.length
+        ? `
+          <table>
+            <thead>
+              <tr>
+                <th>${t("selected")}</th>
+                <th>${t("allBookings")}</th>
+                <th>Qtl</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              ${rows
+                .map(
+                  ([name, v]) => `
+                    <tr>
+                      <td>${escapeHTML(name)}</td>
+                      <td>${v.n}</td>
+                      <td>${v.qty}</td>
+                    </tr>
+                  `
+                )
+                .join("")}
+            </tbody>
+          </table>
+        `
+        : `<p>${t("noBookings")}</p>`;
+    }
+
+    // Queue stats
+    const waitingEl =
+      document.getElementById("waitingCount");
+
+    if (waitingEl) {
+      waitingEl.textContent = waiting.length;
+    }
+
+    const now =
+      document.getElementById("nowServing");
+
+    if (now) {
+      now.textContent =
+        scoped.find((b) => b.status === "called")?.token || "—";
+    }
+
+    // Forecast
+    const forecast =
+      document.getElementById("adminForecast");
+
+    const date =
+      document.getElementById("forecastDate")?.value || today();
+
+    if (forecast) {
+      const centreName = centres[0]?.name;
+
+      const rows = centreName
+        ? slotCounts(centreName, date)
+        : SLOTS.map((s) => ({
+            slot: s,
+            count: 0
+          }));
+
+      forecast.innerHTML = rows
+        .map((r) => {
+          const level = crowdLevel(r.count);
+
+          return `
+            <div class="forecast-row">
+              <span>${r.slot}</span>
+              <span class="crowd-badge crowd-${level}">
+                ${t(level)} · ${r.count}
+              </span>
+            </div>
+          `;
+        })
+        .join("");
+    }
+
+    // Admin table
+    const body =
+      document.getElementById("adminTableBody");
+
+    if (!body) return;
+
+    if (!scoped.length) {
+      body.innerHTML = `
+        <tr>
+          <td colspan="8">${t("noBookings")}</td>
+        </tr>
+      `;
+      return;
+    }
+
+    body.innerHTML = scoped
+      .map(
+        (b) => `
+          <tr>
+            <td>
+              ${escapeHTML(b.token)}
+            </td>
+
+            <td>
+              ${escapeHTML(b.name)}
+              <br>
+              <small>${escapeHTML(b.phone)}</small>
+            </td>
+
+            <td>
+              ${escapeHTML(b.crop || "")}
+              /
+              ${escapeHTML(b.qty || "")}
+            </td>
+
+            <td>
+              ${escapeHTML(b.date || "")}
+            </td>
+
+            <td>
+              ${escapeHTML(b.slot || "")}
+            </td>
+
+            <td>
+              <span class="status ${escapeHTML(b.status)}">
+                ${escapeHTML(b.status)}
+              </span>
+            </td>
+
+            <td>
+              ${
+                b.idPreview
+                  ? `<img class="id-preview" src="${b.idPreview}" alt="ID">`
+                  : escapeHTML(b.idType || "")
+              }
+            </td>
+
+            <td>
+
+              ${
+                b.status === "booked"
+                  ? `
+                    <button
+                      class="blue"
+                      onclick="callFarmer('${b.id}')">
+                      ${t("callFarmer")}
+                    </button>
+
+                    <button
+                      class="primary"
+                      onclick="updateStatus('${b.id}','accepted')">
+                      ${t("accept")}
+                    </button>
+
+                    <button
+                      class="danger"
+                      onclick="updateStatus('${b.id}','rejected')">
+                      ${t("reject")}
+                    </button>
+                  `
+                  : ""
+              }
+
+              ${
+                b.status === "called"
+                  ? `
+                    <button
+                      class="primary"
+                      onclick="updateStatus('${b.id}','accepted')">
+                      ${t("accept")}
+                    </button>
+
+                    <button
+                      class="danger"
+                      onclick="updateStatus('${b.id}','rejected')">
+                      ${t("reject")}
+                    </button>
+                  `
+                  : ""
+              }
+
+              ${
+                b.status === "accepted"
+                  ? `
+                    <button
+                      class="primary"
+                      onclick="payFarmer('${b.id}')">
+                      ${t("payRazorpay")}
+                    </button>
+                  `
+                  : ""
+              }
+
+              ${
+                b.status === "paid"
+                  ? `
+                    <small>
+                      ₹${escapeHTML(b.amount || "")}
+                      <br>
+                      ${escapeHTML(
+                        b.razorpay_payment_id || "paid"
+                      )}
+                    </small>
+                  `
+                  : ""
+              }
+
+            </td>
+          </tr>
+        `
+      )
+      .join("");
+
+  } catch (err) {
+    console.error("Admin booking fetch failed:", err);
+
+    const body =
+      document.getElementById("adminTableBody");
+
+    if (body) {
+      body.innerHTML = `
+        <tr>
+          <td colspan="8">
+            <div class="error">
+              Could not load bookings from server.
+            </div>
+          </td>
+        </tr>
+      `;
+    }
   }
-
-  const waiting = scoped.filter((b) => b.status === "booked");
-  const accepted = scoped.filter((b) => b.status === "accepted" || b.status === "procured");
-  const paid = scoped.filter((b) => b.status === "paid");
-  const qty = scoped.reduce((s, b) => s + Number(b.qty || 0), 0);
-
-  const stats = document.getElementById("adminStats");
-  if (stats) {
-    stats.innerHTML = `
-      <div class="stat-card"><b>${CENTRES.length}</b>${t("allIndia")}</div>
-      <div class="stat-card"><b>${scoped.length}</b>${t("allBookings")}</div>
-      <div class="stat-card"><b>${waiting.length}</b>${t("waiting")}</div>
-      <div class="stat-card"><b>${qty}</b> Qtl</div>
-      <div class="stat-card"><b>${paid.length}</b>${t("paid")}</div>
-      <div class="stat-card"><b>${accepted.length}</b>${t("accepted")}</div>
-    `;
-  }
-
-  const collections = document.getElementById("adminCollections");
-  if (collections) {
-    const byCentre = {};
-    scoped.forEach((b) => {
-      byCentre[b.centre] = byCentre[b.centre] || { qty: 0, n: 0 };
-      byCentre[b.centre].qty += Number(b.qty || 0);
-      byCentre[b.centre].n += 1;
-    });
-    const rows = Object.entries(byCentre);
-    collections.innerHTML = rows.length
-      ? `<table><thead><tr><th>${t("selected")}</th><th>${t("allBookings")}</th><th>Qtl</th></tr></thead><tbody>
-          ${rows.map(([name, v]) => `<tr><td>${escapeHTML(name)}</td><td>${v.n}</td><td>${v.qty}</td></tr>`).join("")}
-        </tbody></table>`
-      : `<p>${t("noBookings")}</p>`;
-  }
-
-  const waitingEl = document.getElementById("waitingCount");
-  if (waitingEl) waitingEl.textContent = waiting.length;
-  const now = document.getElementById("nowServing");
-  if (now) now.textContent = scoped.find((b) => b.status === "called")?.token || "—";
-
-  const forecast = document.getElementById("adminForecast");
-  const date = document.getElementById("forecastDate")?.value || today();
-  if (forecast) {
-    const centreName = centres[0]?.name;
-    const rows = centreName ? slotCounts(centreName, date) : SLOTS.map((s) => ({ slot: s, count: 0 }));
-    forecast.innerHTML = rows.map((r) => {
-      const level = crowdLevel(r.count);
-      return `<div class="forecast-row"><span>${r.slot}</span><span class="crowd-badge crowd-${level}">${t(level)} · ${r.count}</span></div>`;
-    }).join("");
-  }
-
-  const body = document.getElementById("adminTableBody");
-  if (!body) return;
-  if (!scoped.length) {
-    body.innerHTML = `<tr><td colspan="8">${t("noBookings")}</td></tr>`;
-    return;
-  }
-  body.innerHTML = scoped.map((b) => `
-    <tr>
-      <td>${escapeHTML(b.token)}</td>
-      <td>${escapeHTML(b.name)}<br><small>${escapeHTML(b.phone)}</small></td>
-      <td>${escapeHTML(b.crop)} / ${escapeHTML(b.qty)}</td>
-      <td>${escapeHTML(b.date)}</td>
-      <td>${escapeHTML(b.slot)}</td>
-      <td><span class="status ${b.status}">${escapeHTML(b.status)}</span></td>
-      <td>${b.idPreview ? `<img class="id-preview" src="${b.idPreview}" alt="ID">` : escapeHTML(b.idType || "")}</td>
-      <td>
-        ${b.status === "booked" ? `
-          <button class="blue" onclick="callFarmer('${b.id}')">${t("callFarmer")}</button>
-          <button class="primary" onclick="updateStatus('${b.id}','accepted')">${t("accept")}</button>
-          <button class="danger" onclick="updateStatus('${b.id}','rejected')">${t("reject")}</button>
-        ` : ""}
-        ${b.status === "called" ? `
-          <button class="primary" onclick="updateStatus('${b.id}','accepted')">${t("accept")}</button>
-          <button class="danger" onclick="updateStatus('${b.id}','rejected')">${t("reject")}</button>
-        ` : ""}
-        ${b.status === "accepted" ? `
-              <button class="primary" onclick="payFarmer('${b.id}')">${t("payRazorpay")}</button>
-        ` : ""}
-        ${b.status === "paid" ? `<small>₹${escapeHTML(b.amount || "")}<br>${escapeHTML(b.razorpay_payment_id || "paid")}</small>` : ""}
-      </td>
-    </tr>
-  `).join("");
 }
 
 function callFarmer(id) {
