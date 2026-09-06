@@ -1298,27 +1298,93 @@ function notifyFarmerChannel(booking) {
   channel?.postMessage({ type: "booking-update", booking });
 }
 
-function payFarmer(id) {
-  const bookings = getBookings();
-  const b = bookings.find((x) => x.id === id);
-  if (!b) return;
-  const suggested = Math.max(1, Number(b.qty) || 1) * 2200;
-  const modal = document.getElementById("payModal");
-  document.getElementById("payModalBody").innerHTML = `
-    <span class="badge">Razorpay TEST MODE</span>
-    <h2>${t("payTitle")}</h2>
-    <p>${escapeHTML(b.name)} · ${escapeHTML(b.token)}</p>
-    <label>${t("amount")}</label>
-    <input id="payAmount" type="number" min="1" value="${suggested}">
-    <div class="demo">
-      This is Razorpay <strong>test mode</strong>. No real bank, UPI, or card is used.
-      Money is not deducted from any account.
-    </div>
-    <button class="primary" onclick="completeTestPay('${id}')">Pay with Razorpay test</button>
-    <br><br>
-    <button class="secondary" onclick="closePay()">${t("cancel")}</button>
-  `;
-  modal.classList.remove("hidden");
+async function payFarmer(id) {
+  if (!CFG.API_BASE) {
+    alert("Backend URL is not configured.");
+    return;
+  }
+
+  try {
+    const adminRes = await fetch(
+      `${CFG.API_BASE}/api/admin/bookings`
+    );
+
+    const adminData = await adminRes.json().catch(() => ({}));
+
+    if (!adminRes.ok || !adminData.success) {
+      alert(adminData.message || "Could not load booking.");
+      return;
+    }
+
+    const b = (adminData.bookings || []).find(
+      (booking) => booking.id === id
+    );
+
+    if (!b) {
+      alert("Booking not found.");
+      return;
+    }
+
+    const suggested =
+      Math.max(1, Number(b.quantity || b.qty) || 1) * 2200;
+
+    const modal = document.getElementById("payModal");
+    const body = document.getElementById("payModalBody");
+
+    if (!modal || !body) {
+      alert("Payment window not found.");
+      return;
+    }
+
+    body.innerHTML = `
+      <span class="badge">Razorpay TEST MODE</span>
+
+      <h2>${t("payTitle")}</h2>
+
+      <p>
+        ${escapeHTML(b.farmer_name || b.name || "Farmer")}
+        ·
+        ${escapeHTML(b.token)}
+      </p>
+
+      <label>${t("amount")}</label>
+
+      <input
+        id="payAmount"
+        type="number"
+        min="1"
+        value="${suggested}"
+      >
+
+      <div class="demo">
+        This is Razorpay <strong>test mode</strong>.
+        No real bank, UPI, or card is used.
+        Money is not deducted from any account.
+      </div>
+
+      <button
+        class="primary"
+        onclick="completeTestPay('${id}')"
+      >
+        Pay with Razorpay test
+      </button>
+
+      <br><br>
+
+      <button
+        class="secondary"
+        onclick="closePay()"
+      >
+        ${t("cancel")}
+      </button>
+    `;
+
+    modal.classList.remove("hidden");
+
+  } catch (err) {
+    console.error("Payment booking fetch failed:", err);
+    alert("Could not connect to server.");
+  }
 }
 
 async function completeTestPay(id) {
