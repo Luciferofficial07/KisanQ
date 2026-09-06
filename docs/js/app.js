@@ -1213,16 +1213,43 @@ function callNext() {
   callFarmer(waiting[0].id);
 }
 
-function updateStatus(id, status) {
-  const bookings = getBookings();
-  const b = bookings.find((x) => x.id === id);
-  if (!b) return;
-  b.status = status;
-  saveBookings(bookings);
-  pushNotify(b.phone, `${t(status) || status}: ${b.token}`);
-  notifyFarmerChannel(b);
-  renderAdmin();
-  renderFarmerStatus();
+async function updateStatus(id, status) {
+  if (!CFG.API_BASE) {
+    alert("Backend URL is not configured.");
+    return;
+  }
+
+  try {
+    const res = await fetch(
+      `${CFG.API_BASE}/api/bookings/${encodeURIComponent(id)}/status`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ status })
+      }
+    );
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data.success) {
+      alert(data.message || "Could not update booking status.");
+      return;
+    }
+
+    console.log(`Booking ${id} updated to ${status}`);
+
+    // Reload from PostgreSQL
+    await renderAdmin();
+
+    // Refresh farmer status if this device belongs to that farmer
+    await renderFarmerStatus();
+
+  } catch (err) {
+    console.error("Status update failed:", err);
+    alert("Server connection failed.");
+  }
 }
 
 function notifyFarmerChannel(booking) {
