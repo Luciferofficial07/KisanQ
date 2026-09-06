@@ -22,7 +22,7 @@ router.post("/login", (req, res) => {
     success: true,
     admin: {
       username,
-      displayName: "Admin Sharma"
+      displayName: process.env.ADMIN_DISPLAY_NAME || username
     }
   });
 });

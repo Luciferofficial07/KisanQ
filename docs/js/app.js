@@ -784,16 +784,72 @@ function backToPhone() {
   document.getElementById("phoneStep")?.classList.remove("hidden");
 }
 
-function adminLogin() {
-  const username = document.getElementById("adminUsername")?.value.trim();
-  const password = document.getElementById("adminPassword")?.value;
-  const message = document.getElementById("adminLoginMessage");
-  if (username !== "admin" || password !== "admin123") {
-    message.innerHTML = `<div class="error">Invalid username or password.</div>`;
+async function adminLogin() {
+  const username =
+    document.getElementById("adminUsername")?.value.trim();
+
+  const password =
+    document.getElementById("adminPassword")?.value;
+
+  const message =
+    document.getElementById("adminLoginMessage");
+
+  if (!username || !password) {
+    message.innerHTML =
+      `<div class="error">Please enter username and password.</div>`;
     return;
   }
-  write(ADMIN_KEY, { username, displayName: "Admin Sharma" });
-  showAdminHome();
+
+  if (!CFG.API_BASE) {
+    message.innerHTML =
+      `<div class="error">Backend URL is not configured.</div>`;
+    return;
+  }
+
+  message.innerHTML =
+    `<div>🔄 Signing in...</div>`;
+
+  try {
+    const res = await fetch(
+      `${CFG.API_BASE}/api/admin/login`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          username,
+          password
+        })
+      }
+    );
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data.success) {
+      message.innerHTML =
+        `<div class="error">${escapeHTML(
+          data.message || "Invalid username or password."
+        )}</div>`;
+      return;
+    }
+
+    // Save only the authenticated admin information locally
+    write(ADMIN_KEY, {
+      username: data.admin.username,
+      displayName: data.admin.displayName
+    });
+
+    message.innerHTML = "";
+
+    showAdminHome();
+
+  } catch (err) {
+    console.error("Admin login failed:", err);
+
+    message.innerHTML =
+      `<div class="error">Could not connect to server.</div>`;
+  }
 }
 
 function showAdminHome() {
