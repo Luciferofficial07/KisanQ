@@ -1,17 +1,17 @@
-const { Pool, Client } = require("pg");
+const { Pool } = require("pg");
 const path = require("path");
-require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
-const baseConfig = {
-  host: process.env.DB_HOST || "localhost",
-  port: Number(process.env.DB_PORT || 5432),
-  user: process.env.DB_USER || "postgres",
-  password: String(process.env.DB_PASSWORD ?? "")
-};
+require("dotenv").config({
+  path: path.join(__dirname, "..", ".env")
+});
 
 const pool = new Pool({
-  ...baseConfig,
-  database: process.env.DB_NAME || "kisanq"
+  connectionString: process.env.DATABASE_URL,
+
+  // Render PostgreSQL SSL connection
+  ssl: process.env.DATABASE_URL
+    ? { rejectUnauthorized: false }
+    : false
 });
 
 pool.on("error", (err) => {
@@ -19,15 +19,9 @@ pool.on("error", (err) => {
 });
 
 async function initDb() {
-  const dbName = process.env.DB_NAME || "kisanq";
-  const admin = new Client({ ...baseConfig, database: "postgres" });
-  await admin.connect();
-  const found = await admin.query("SELECT 1 FROM pg_database WHERE datname = $1", [dbName]);
-  if (!found.rowCount) {
-    await admin.query(`CREATE DATABASE ${dbName.replace(/[^a-zA-Z0-9_]/g, "")}`);
-    console.log("Created database", dbName);
-  }
-  await admin.end();
+  // Test database connection
+  await pool.query("SELECT NOW()");
+  console.log("PostgreSQL connection successful.");
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS farmers (
@@ -63,4 +57,7 @@ async function initDb() {
   console.log("PostgreSQL ready.");
 }
 
-module.exports = { pool, initDb };
+module.exports = {
+  pool,
+  initDb
+};
