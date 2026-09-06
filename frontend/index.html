@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KisanQ — Smart Farmer Procurement</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="logo">KQ</div>
+    <div>
+      <h1>KisanQ</h1>
+      <p data-i18n="tagline">Smart Farmer Procurement Platform • SIH 2026</p>
+    </div>
+  </div>
+  <div class="header-actions">
+    <select id="globalLanguage" onchange="changeLanguage(this.value)">
+      <option value="en">English</option>
+      <option value="hi">हिन्दी</option>
+      <option value="bn">বাংলা</option>
+      <option value="as">অসমীয়া</option>
+      <option value="gu">ગુજરાતી</option>
+      <option value="kn">ಕನ್ನಡ</option>
+      <option value="ml">മലയാളം</option>
+      <option value="mr">मराठी</option>
+      <option value="or">ଓଡ଼ିଆ</option>
+      <option value="pa">ਪੰਜਾਬੀ</option>
+      <option value="ta">தமிழ்</option>
+      <option value="te">తెలుగు</option>
+      <option value="ur">اردو</option>
+    </select>
+    <button onclick="showAdminLogin()" data-i18n="adminOfficer">Admin Officer</button>
+  </div>
+</header>
+
+<main>
+  <section id="homePage">
+    <div id="sessionBanner" class="session-banner hidden">
+      <span id="sessionBannerText"></span>
+      <button class="primary" onclick="showFarmerHome()" data-i18n="continueSession">Continue</button>
+    </div>
+    <div class="hero">
+      <h2 id="heroTitle" data-i18n="hero">Fair & Smart Procurement for Farmers</h2>
+      <p id="heroText" data-i18n="heroText">Book your slot, get a unique token, and visit when the crowd is low.</p>
+      <div class="hero-buttons">
+        <button onclick="showFarmerRegister()" data-i18n="farmerRegister">Farmer Registration</button>
+        <button onclick="showFarmerLogin()" data-i18n="farmerLogin">Farmer Login</button>
+        <button onclick="showAdminLogin()" data-i18n="adminOfficer">Admin Officer</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>🌾 KisanQ</h2>
+      <p class="sub" data-i18n="about">A digital queue and procurement system for farmers and officers.</p>
+      <div class="grid">
+        <div><b data-i18n="featuresOtp">OTP login + registration</b></div>
+        <div><b data-i18n="featuresPin">PIN-based centres across India</b></div>
+        <div><b data-i18n="featuresToken">Unique digital token</b></div>
+        <div><b data-i18n="featuresAlert">Slot reminders on your phone</b></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="farmerAuth" class="auth-container hidden">
+    <div class="card center">
+      <div class="auth-icon">👨‍🌾</div>
+      <div class="auth-tabs">
+        <button id="tabRegister" class="active" onclick="switchAuthTab('register')" data-i18n="farmerRegister">Register</button>
+        <button id="tabLogin" onclick="switchAuthTab('login')" data-i18n="farmerLogin">Login</button>
+      </div>
+      <div class="demo">Live OTP is sent to your +91 mobile via Twilio SMS.</div>
+
+      <div id="registerPane">
+        <p class="sub" data-i18n="registerSub">Create your farmer account with name and mobile number.</p>
+        <label data-i18n="name">Full name</label>
+        <input id="regName" data-i18n-placeholder="namePH" placeholder="Enter your name">
+        <label data-i18n="village">Village / Town</label>
+        <input id="regVillage" data-i18n-placeholder="villagePH" placeholder="Village">
+        <label data-i18n="mobile">Mobile number</label>
+        <input id="regPhone" type="tel" maxlength="10" data-i18n-placeholder="phonePH" placeholder="10-digit mobile">
+      </div>
+
+      <div id="loginPane" class="hidden">
+        <p class="sub" data-i18n="loginSub">Login with the mobile number you registered.</p>
+        <label data-i18n="mobile">Mobile number</label>
+        <input id="loginPhone" type="tel" maxlength="10" data-i18n-placeholder="phonePH" placeholder="10-digit mobile">
+      </div>
+
+      <div id="phoneStep">
+        <button class="primary" id="sendFromRegister" onclick="sendOTP(document.getElementById('registerPane').classList.contains('hidden') ? false : true)" data-i18n="send">Send OTP</button>
+      </div>
+
+      <div id="otpStep" class="hidden">
+        <label data-i18n="enterOTP">Enter OTP</label>
+        <input id="farmerOTP" class="otp-box" maxlength="6" placeholder="••••••">
+        <button type="button" class="primary" onclick="verifyOTP()" data-i18n="verify">Verify OTP</button>
+        <br><br>
+        <button class="secondary" onclick="backToPhone()" data-i18n="change">Change number</button>
+      </div>
+
+      <div id="loginMessage"></div>
+      <br>
+      <button class="secondary" onclick="goHome()" data-i18n="back">← Back</button>
+    </div>
+  </section>
+
+  <section id="farmerHome" class="hidden farmer-page">
+    <div class="card">
+      <h2 data-i18n="dashboard">Farmer Dashboard</h2>
+      <p class="sub"><span data-i18n="welcome">Welcome</span>, <strong id="farmerWelcome"></strong></p>
+      <button class="danger" onclick="farmerLogout()" data-i18n="logout">Logout</button>
+    </div>
+    <div class="card">
+      <h2 data-i18n="quick">Quick actions</h2>
+      <div class="quick-actions">
+        <button class="quick-action" onclick="showFarmerCentres()"><span class="qa-icon">📍</span><span data-i18n="find">Find Centres</span></button>
+        <button class="quick-action" onclick="showFarmerBooking()"><span class="qa-icon">🎟️</span><span data-i18n="book">Book Slot</span></button>
+        <button class="quick-action" onclick="showFarmerStatusPage()"><span class="qa-icon">📊</span><span data-i18n="status">Track Status</span></button>
+        <button class="quick-action" onclick="showFarmerLanguage()"><span class="qa-icon">🌐</span><span data-i18n="language">Language</span></button>
+      </div>
+    </div>
+  </section>
+
+  <section id="farmerLanguagePage" class="hidden farmer-page">
+    <div class="card">
+      <h2 data-i18n="language">Language</h2>
+      <p class="sub" data-i18n="choose">Choose your language.</p>
+      <div class="language-grid">
+        <button class="language-btn" data-lang="en" onclick="changeLanguage('en')">English</button>
+        <button class="language-btn" data-lang="hi" onclick="changeLanguage('hi')">हिन्दी</button>
+        <button class="language-btn" data-lang="bn" onclick="changeLanguage('bn')">বাংলা</button>
+        <button class="language-btn" data-lang="as" onclick="changeLanguage('as')">অসমীয়া</button>
+        <button class="language-btn" data-lang="gu" onclick="changeLanguage('gu')">ગુજરાતી</button>
+        <button class="language-btn" data-lang="kn" onclick="changeLanguage('kn')">ಕನ್ನಡ</button>
+        <button class="language-btn" data-lang="ml" onclick="changeLanguage('ml')">മലയാളം</button>
+        <button class="language-btn" data-lang="mr" onclick="changeLanguage('mr')">मराठी</button>
+        <button class="language-btn" data-lang="or" onclick="changeLanguage('or')">ଓଡ଼ିଆ</button>
+        <button class="language-btn" data-lang="pa" onclick="changeLanguage('pa')">ਪੰਜਾਬੀ</button>
+        <button class="language-btn" data-lang="ta" onclick="changeLanguage('ta')">தமிழ்</button>
+        <button class="language-btn" data-lang="te" onclick="changeLanguage('te')">తెలుగు</button>
+        <button class="language-btn" data-lang="ur" onclick="changeLanguage('ur')">اردو</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="farmerCentresPage" class="hidden farmer-page">
+    <div class="card">
+      <h2 data-i18n="nearby">Find nearby centres</h2>
+      <p class="sub" data-i18n="nearby">Enter PIN code.</p>
+      <div class="grid">
+        <div>
+          <label data-i18n="pin">PIN code</label>
+          <input id="farmerPin" maxlength="6" placeholder="110001">
+        </div>
+        <div style="display:flex;align-items:end;">
+          <button class="primary" onclick="findCentres()" data-i18n="search">Find centres</button>
+        </div>
+      </div>
+      <div id="centreResults"></div>
+      <div id="map"></div>
+    </div>
+  </section>
+
+  <section id="farmerBookingPage" class="hidden farmer-page">
+    <div id="noCentreMessage" class="card hidden">
+      <h2 data-i18n="booking">Book slot</h2>
+      <p class="sub" data-i18n="noCentreYet">Select a centre first.</p>
+      <button class="primary" onclick="showFarmerCentres()" data-i18n="findFirst">Find a centre first</button>
+    </div>
+    <div id="bookingFormWrap" class="card hidden">
+      <h2 data-i18n="booking">Book procurement slot</h2>
+      <div class="grid">
+        <div>
+          <label data-i18n="selected">Selected centre</label>
+          <select id="selectedCentre"></select>
+        </div>
+        <div>
+          <label data-i18n="date">Date</label>
+          <input type="date" id="bookingDate" onchange="renderSlotForecast()">
+        </div>
+        <div>
+          <label data-i18n="slot">Time slot</label>
+          <select id="bookingSlot" onchange="renderSlotForecast()">
+            <option>9:00 AM – 11:00 AM</option>
+            <option>11:00 AM – 1:00 PM</option>
+            <option>2:00 PM – 4:00 PM</option>
+            <option>4:00 PM – 6:00 PM</option>
+          </select>
+        </div>
+        <div id="slotForecast" style="grid-column:1/-1;"></div>
+        <div>
+          <label data-i18n="crop">Crop</label>
+          <select id="crop">
+            <option>Wheat</option>
+            <option>Paddy</option>
+            <option>Maize</option>
+            <option>Mustard</option>
+            <option>Pulses</option>
+            <option>Potato</option>
+            <option>Jute</option>
+            <option>Vegetables</option>
+          </select>
+        </div>
+        <div>
+          <label data-i18n="quantity">Quantity (quintals)</label>
+          <input id="quantity" type="number" min="1" placeholder="20">
+        </div>
+        <div>
+          <label data-i18n="govtIdType">ID type</label>
+          <select id="govtIdType">
+            <option value="Aadhaar">Aadhaar</option>
+            <option value="Voter ID">Voter ID</option>
+            <option value="PAN">PAN</option>
+            <option value="Driving Licence">Driving Licence</option>
+          </select>
+        </div>
+        <div>
+          <label data-i18n="uploadId">Upload ID photo</label>
+          <input id="govtIdFile" type="file" accept="image/*,.pdf" onchange="onGovtIdChange(event)">
+          <img id="idPreview" class="id-preview hidden" alt="ID preview">
+        </div>
+      </div>
+      <div id="bookingMessage"></div>
+      <button class="primary" onclick="bookSlot()" data-i18n="bookNow">Book my slot</button>
+    </div>
+  </section>
+
+  <section id="farmerStatusPage" class="hidden farmer-page">
+    <div id="farmerStatus"></div>
+  </section>
+
+  <section id="adminLogin" class="auth-container hidden">
+    <div class="card">
+      <div class="center">
+        <div class="auth-icon">🧑‍💼</div>
+        <h2 data-i18n="adminLogin">Admin officer login</h2>
+        <p class="sub" data-i18n="adminSub">Username and password only.</p>
+      </div>
+      <label data-i18n="username">Username</label>
+      <input id="adminUsername" placeholder="admin">
+      <label data-i18n="password">Password</label>
+      <input id="adminPassword" type="password" placeholder="admin123">
+      <div class="demo" data-i18n="adminDemo">Demo: username admin / password admin123</div>
+      <div id="adminLoginMessage"></div>
+      <button class="primary" onclick="adminLogin()">Login</button>
+      <br><br>
+      <button class="secondary" onclick="goHome()" data-i18n="back">← Back</button>
+    </div>
+  </section>
+
+  <section id="adminHome" class="hidden admin-page">
+    <div class="card">
+      <h2 data-i18n="adminDash">Officer dashboard</h2>
+      <p class="admin-welcome" id="adminWelcomeName"></p>
+      <button class="danger" onclick="adminLogout()" data-i18n="logout">Logout</button>
+    </div>
+    <div class="card">
+      <h2 data-i18n="collections">All procurement collections</h2>
+      <div id="adminStats" class="stat-grid"></div>
+      <div id="adminCollections"></div>
+    </div>
+    <div class="card">
+      <h2 data-i18n="tools">Officer tools</h2>
+      <label data-i18n="pickCentre">Choose centre by PIN</label>
+      <input id="adminCentrePin" maxlength="6" placeholder="110001" oninput="loadAdminCentre()">
+      <div id="adminCentreInfo"></div>
+      <div class="token-box">
+        <div>
+          <div class="token-label" data-i18n="now">Now serving</div>
+          <div class="token-number" id="nowServing">—</div>
+        </div>
+        <div>
+          <div class="token-label" data-i18n="waiting">Waiting</div>
+          <div class="token-number" id="waitingCount">0</div>
+        </div>
+        <button class="secondary" onclick="callNext()" data-i18n="callNext">Call next</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="adminForecastPage" class="hidden admin-page">
+    <div class="card">
+      <h2 data-i18n="predicted">Predicted footfall</h2>
+      <input type="date" id="forecastDate" onchange="renderAdmin()">
+      <div id="adminForecast"></div>
+    </div>
+  </section>
+
+  <section id="adminQueuePage" class="hidden admin-page">
+    <div class="card">
+      <h2 data-i18n="farmerQueue">Farmer queue</h2>
+      <div style="overflow:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th data-i18n="token">Token</th>
+              <th data-i18n="farmer">Farmer</th>
+              <th data-i18n="cropQty">Crop / Qty</th>
+              <th data-i18n="date">Date</th>
+              <th data-i18n="slot">Slot</th>
+              <th>Status</th>
+              <th data-i18n="govtId">ID</th>
+              <th data-i18n="action">Action</th>
+            </tr>
+          </thead>
+          <tbody id="adminTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<nav id="farmerBottomNav" class="bottom-nav hidden">
+  <button data-tab="home" onclick="showFarmerHome()"><span class="icon">🏠</span><span data-i18n="home">Home</span></button>
+  <button data-tab="centres" onclick="showFarmerCentres()"><span class="icon">📍</span><span data-i18n="find">Centres</span></button>
+  <button data-tab="booking" onclick="showFarmerBooking()"><span class="icon">🎟️</span><span data-i18n="book">Book</span></button>
+  <button data-tab="status" onclick="showFarmerStatusPage()"><span class="icon">📊</span><span data-i18n="status">Status</span></button>
+  <button data-tab="language" onclick="showFarmerLanguage()"><span class="icon">🌐</span><span data-i18n="language">Language</span></button>
+</nav>
+
+<nav id="adminBottomNav" class="bottom-nav hidden">
+  <button data-tab="home" onclick="showAdminHome()"><span class="icon">🎟️</span><span data-i18n="queue">Queue</span></button>
+  <button data-tab="forecast" onclick="showAdminForecastPage()"><span class="icon">🔮</span><span data-i18n="forecast">Forecast</span></button>
+  <button data-tab="list" onclick="showAdminQueuePage()"><span class="icon">📋</span><span data-i18n="allBookings">Bookings</span></button>
+</nav>
+
+<div id="payModal" class="pay-modal hidden">
+  <div class="card" id="payModalBody"></div>
+</div>
+
+<footer>KisanQ © 2026 • SIH prototype • GitHub Pages ready</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script src="js/config.js"></script>
+<script src="js/centres.js"></script>
+<script src="js/i18n.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
