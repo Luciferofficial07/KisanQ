@@ -1388,35 +1388,96 @@ async function payFarmer(id) {
 }
 
 async function completeTestPay(id) {
-  const bookings = getBookings();
-  const b = bookings.find((x) => x.id === id);
-  if (!b) return;
-  const amount = Number(document.getElementById("payAmount")?.value) || 0;
+  const amount = Number(
+    document.getElementById("payAmount")?.value
+  ) || 0;
+
   if (amount <= 0) {
     alert(t("required"));
     return;
   }
-  const paymentId = "pay_test_" + Math.random().toString(36).slice(2, 12).toUpperCase();
-  b.status = "paid";
-  b.amount = amount;
-  b.razorpay_payment_id = paymentId;
-  b.paidAt = new Date().toISOString();
-  saveBookings(bookings);
-  pushNotify(b.phone, `${t("paid")}: ₹${amount} · ${paymentId}`);
-  notifyFarmerChannel(b);
-  try {
-    await fetch(`${CFG.API_BASE}/api/payments/test-complete`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ booking_id: id, amount, payment_id: paymentId, phone: b.phone, token: b.token })
-    });
-  } catch {
-    /* local paid status still shows */
+
+  if (!CFG.API_BASE) {
+    alert("Backend URL is not configured.");
+    return;
   }
-  renderAdmin();
-  renderFarmerStatus();
-  closePay();
-  alert(`${t("paymentDone")}\n₹${amount}\n${paymentId}`);
+
+  try {
+    // Get latest booking from PostgreSQL
+    const adminRes = await fetch(
+      `${CFG.API_BASE}/api/admin/bookings`
+    );
+
+    const adminData = await adminRes.json().catch(() => ({}));
+
+    if (!adminRes.ok || !adminData.success) {
+      alert(adminData.message || "Could not load booking.");
+      return;
+    }
+
+    const b = (adminData.bookings || []).find(
+      (booking) => booking.id === id
+    );
+
+    if (!b) {
+      alert("Booking not found.");
+      return;
+    }
+
+    // Generate test payment ID
+    const paymentId =
+      "pay_test_" +
+      Math.random()
+        .toString(36)
+        .slice(2, 12)
+        .toUpperCase();
+
+    // Save payment to backend
+    const paymentRes = await fetch(
+      `${CFG.API_BASE}/api/payments/test-complete`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          booking_id: id,
+          amount: amount,
+          payment_id: paymentId,
+          phone: b.phone,
+          token: b.token
+        })
+      }
+    );
+
+    const paymentData = await paymentRes.json().catch(() => ({}));
+
+    if (!paymentRes.ok || !paymentData.success) {
+      alert(
+        paymentData.message ||
+        "Payment could not be completed."
+      );
+      return;
+    }
+
+    console.log("Payment successful:", paymentId);
+
+    // Refresh admin directly from PostgreSQL
+    await renderAdmin();
+
+    // Refresh farmer status
+    await renderFarmerStatus();
+
+    closePay();
+
+    alert(
+      `${t("paymentDone")}\n₹${amount}\n${paymentId}`
+    );
+
+  } catch (err) {
+    console.error("Payment failed:", err);
+    alert("Payment server connection failed.");
+  }
 }
 
 function finishPay(id) {
