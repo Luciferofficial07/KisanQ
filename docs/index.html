@@ -230,24 +230,45 @@
     <div id="farmerStatus"></div>
   </section>
 
-  <section id="adminLogin" class="auth-container hidden">
-    <div class="card">
-      <div class="center">
-        <div class="auth-icon">🧑‍💼</div>
-        <h2 data-i18n="adminLogin">Admin officer login</h2>
-        <p class="sub" data-i18n="adminSub">Username and password only.</p>
-      </div>
-      <label data-i18n="username">Username</label>
-      <input id="adminUsername" placeholder="admin">
-      <label data-i18n="password">Password</label>
-      <input id="adminPassword" type="password" placeholder="admin123">
-      <div class="demo" data-i18n="adminDemo">Demo: username admin / password admin123</div>
-      <div id="adminLoginMessage"></div>
-      <button class="primary" onclick="adminLogin()">Login</button>
-      <br><br>
-      <button class="secondary" onclick="goHome()" data-i18n="back">← Back</button>
+<section id="adminLogin" class="auth-container hidden">
+  <div class="card">
+    <div class="center">
+      <div class="auth-icon">🧑‍💼</div>
+      <h2 data-i18n="adminLogin">Admin officer login</h2>
+      <p class="sub" data-i18n="adminSub">
+        Username and password only.
+      </p>
     </div>
-  </section>
+
+    <label data-i18n="username">Username</label>
+    <input
+      id="adminUsername"
+      type="text"
+      autocomplete="username"
+      placeholder=""
+    >
+
+    <label data-i18n="password">Password</label>
+    <input
+      id="adminPassword"
+      type="password"
+      autocomplete="current-password"
+      placeholder=""
+    >
+
+    <div id="adminLoginMessage"></div>
+
+    <button class="primary" onclick="adminLogin()">
+      Login
+    </button>
+
+    <br><br>
+
+    <button class="secondary" onclick="goHome()" data-i18n="back">
+      ← Back
+    </button>
+  </div>
+</section>
 
   <section id="adminHome" class="hidden admin-page">
     <div class="card">
