@@ -1187,16 +1187,58 @@ async function renderAdmin() {
   }
 }
 
-function callFarmer(id) {
-  const bookings = getBookings();
-  const b = bookings.find((x) => x.id === id);
-  if (!b) return;
-  b.status = "called";
-  saveBookings(bookings);
-  pushNotify(b.phone, t("calledMsg") + " " + b.token);
-  notifyFarmerChannel(b);
-  notifyPhone("KisanQ", `${b.token} ${t("calledMsg")}`);
-  renderAdmin();
+async function callFarmer(id) {
+  if (!CFG.API_BASE) {
+    alert("Backend URL is not configured.");
+    return;
+  }
+
+  try {
+    const res = await fetch(
+      `${CFG.API_BASE}/api/bookings/${encodeURIComponent(id)}/status`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ status: "called" })
+      }
+    );
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data.success) {
+      alert(data.message || "Could not call farmer.");
+      return;
+    }
+
+    const booking = data.booking || {};
+
+    console.log(`Farmer ${id} called successfully.`);
+
+    // Local notification
+    if (booking.phone) {
+      pushNotify(
+        booking.phone,
+        t("calledMsg") + " " + (booking.token || "")
+      );
+
+      notifyPhone(
+        "KisanQ",
+        `${booking.token || ""} ${t("calledMsg")}`
+      );
+    }
+
+    // Reload admin data from PostgreSQL
+    await renderAdmin();
+
+    // Refresh farmer status
+    await renderFarmerStatus();
+
+  } catch (err) {
+    console.error("Call farmer failed:", err);
+    alert("Server connection failed.");
+  }
 }
 
 function callNext() {
