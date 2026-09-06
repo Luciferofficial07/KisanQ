@@ -439,14 +439,22 @@ async function onGovtIdChange(ev) {
   }
 }
 
-function bookSlot() {
+async function bookSlot() {
   const farmer = getFarmer();
+
   if (!farmer) {
     showFarmerRegister();
     return;
   }
-  const centre = document.getElementById("selectedCentre")?.value;
-  const pin = document.getElementById("selectedCentre")?.selectedOptions?.[0]?.dataset.pin || "";
+
+  const centreEl = document.getElementById("selectedCentre");
+  const centre = centreEl?.value || "";
+
+  const pin =
+    centreEl?.selectedOptions?.[0]?.dataset.pin ||
+    read("kisanq_selected_centre", null)?.pin ||
+    "";
+
   const date = document.getElementById("bookingDate")?.value;
   const slot = document.getElementById("bookingSlot")?.value;
   const crop = document.getElementById("crop")?.value;
@@ -458,53 +466,119 @@ function bookSlot() {
     message.innerHTML = `<div class="error">${t("required")}</div>`;
     return;
   }
+
   if (!pendingGovtId) {
     message.innerHTML = `<div class="error">${t("idRequired")}</div>`;
     return;
   }
 
-  const rows = slotCounts(centre, date);
-  const thisCrowd = crowdLevel(rows.find((r) => r.slot === slot)?.count || 0);
-  const best = rows.slice().sort((a, b) => a.count - b.count)[0];
-  const token = uniqueToken();
+  if (!CFG.API_BASE) {
+    message.innerHTML = `<div class="error">Backend URL is not configured.</div>`;
+    return;
+  }
 
-  const booking = {
-    id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
-    token,
-    phone: farmer.phone,
-    name: farmer.name,
-    centre,
-    pin,
-    date,
-    slot,
-    crop,
-    qty: quantity,
-    status: "booked",
-    idType,
-    idName: pendingGovtId.name,
-    idPreview: pendingGovtId.dataUrl,
-    crowd: thisCrowd,
-    bestSlot: best.slot,
-    createdAt: new Date().toISOString()
-  };
+  message.innerHTML = `<div>🔄 ${t("sending")}</div>`;
 
-  const bookings = getBookings();
-  bookings.push(booking);
-  saveBookings(bookings);
-  pushNotify(farmer.phone, `${t("bookingSuccess")} ${token}`);
-  scheduleReminder(booking);
-  notifyPhone(`${t("bookingConfirm")}: ${token}`, `${centre} · ${date} · ${slot}`);
+  try {
+    // Create booking in CENTRAL PostgreSQL database
+    const res = await fetch(`${CFG.API_BASE}/api/bookings`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        phone: farmer.phone,
+        farmer_name: farmer.name || "Farmer",
+        centre_name: centre,
+        centre_pincode: pin,
+        booking_date: date,
+        slot,
+        crop,
+        quantity: Number(quantity)
+      })
+    });
 
-  message.innerHTML = `
-    <div class="success">
-      <div>${t("bookingSuccess")} <strong>${escapeHTML(token)}</strong></div>
-      <p>${t("crowdNow")}: ${t(thisCrowd)}</p>
-      <p>${t("suitable")}: ${escapeHTML(best.slot)}</p>
-      <p>${t("reminderSet")}</p>
-    </div>
-    <button class="primary" onclick="showFarmerStatusPage()">${t("viewStatus")}</button>
-  `;
-  renderFarmerStatus();
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data.success) {
+      console.error("Booking API error:", data);
+
+      message.innerHTML = `
+        <div class="error">
+          ${escapeHTML(data.message || "Could not create booking.")}
+        </div>
+      `;
+
+      return;
+    }
+
+    // Backend-generated unique token
+    const serverBooking = data.booking;
+
+    // Local copy is ONLY for temporary UI/reminders.
+    // PostgreSQL is now the source of truth.
+    const localBooking = {
+      ...serverBooking,
+      name: farmer.name,
+      centre: serverBooking.centre_name,
+      pin: serverBooking.centre_pincode,
+      date: serverBooking.booking_date,
+      qty: serverBooking.quantity,
+      idType,
+      idName: pendingGovtId.name,
+      idPreview: pendingGovtId.dataUrl,
+      createdAt: new Date().toISOString()
+    };
+
+    const bookings = getBookings();
+
+    // Avoid duplicate local entries
+    const withoutDuplicate = bookings.filter(
+      (b) => b.id !== localBooking.id
+    );
+
+    withoutDuplicate.push(localBooking);
+    saveBookings(withoutDuplicate);
+
+    pushNotify(
+      farmer.phone,
+      `${t("bookingSuccess")} ${serverBooking.token}`
+    );
+
+    scheduleReminder(localBooking);
+
+    notifyPhone(
+      `${t("bookingConfirm")}: ${serverBooking.token}`,
+      `${centre} · ${date} · ${slot}`
+    );
+
+    message.innerHTML = `
+      <div class="success">
+        <div>
+          ${t("bookingSuccess")}
+          <strong>${escapeHTML(serverBooking.token)}</strong>
+        </div>
+        <p>${escapeHTML(centre)}</p>
+        <p>${escapeHTML(date)} · ${escapeHTML(slot)}</p>
+        <p>${t("reminderSet")}</p>
+      </div>
+
+      <button class="primary" onclick="showFarmerStatusPage()">
+        ${t("viewStatus")}
+      </button>
+    `;
+
+    renderFarmerStatus();
+
+  } catch (err) {
+    console.error("Booking request failed:", err);
+
+    message.innerHTML = `
+      <div class="error">
+        ${t("server")}
+      </div>
+    `;
+  }
 }
 
 function pushNotify(phone, text) {
